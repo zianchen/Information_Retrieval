@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#PBS -N HadoopJob
+#PBS -q workq
+#PBS -l select=10:ncpus=16:mem=8gb
+#PBS -l place=scatter
+#PBS -l walltime=72:00:00
+#PBS -j oe
+
+### 0. Setup environment variables
+export PBS_O_WORKDIR=/home/wei6/wei6Project3/contentIndex
+cd $PBS_O_WORKDIR
+export HADOOP_HOME=/home/wei6/software/hadoop-1.2.1
+export MH_HOME=/home/wei6/software/myhadoop
+export PATH=$HADOOP_HOME/bin:$MH_HOME/bin:$PATH
+export HADOOP_CONF_DIR=$PBS_O_WORKDIR/conf
+export PBS_NUM_NODES=`cat $PBS_NODEFILE | uniq | wc -l`
+export JAVA_HOME=/home/wei6/software/jdk1.8.0_31
+export DATA_HOME=/home/wei6
+export HADOOP_CLIENT_OPTS="-XX:+UseConcMarkSweepGC $HADOOP_CLIENT_OPTS"
+export HADOOP_CLIENT_OPTS="-Xmx2048M $HADOOP_CLIENT_OPTS"
+
+# ##1. Setup Hadoop configuration files
+myhadoop-configure.sh -s /local_scratch/$USER/$PBS_JOBID
+
+### 2. Start Hadoop services
+$HADOOP_HOME/bin/start-all.sh
+
+### 3. Copy input files to HDFS (stage-in)
+$HADOOP_HOME/bin/hadoop dfs -copyFromLocal $DATA_HOME/data/ ./
+
+$HADOOP_HOME/bin/hadoop dfs -rmr output
+
+make clean
+make
+jar cf booleanRetrieval.jar *.java *.class
+
+### 4. Run MapReduce job
+$HADOOP_HOME/bin/hadoop jar booleanRetrieval.jar Driver
+
+### 5. Copy output files from HDFS to your home directory (stage-out)
+$HADOOP_HOME/bin/hadoop dfs -get output ./
+
+### 6. Stop Hadoop services
+$HADOOP_HOME/bin/stop-all.sh
+
+### 7. Clearup
+myhadoop-cleanup.sh
